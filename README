@@ -1,0 +1,24 @@
+# Setup Guide for C++ Program with OpenCV
+
+## Prerequisites
+
+Ensure that you have **Homebrew** installed on your system. If it’s not installed, you can do so by running the following command in your terminal:
+
+> **Note:** You will also need to install **OpenCV** and **pkg-config** using **Homebrew** to compile and run the C++ program. Follow the steps below.
+
+```bash
+# Install Homebrew (if not installed already)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install pkg-config and OpenCV using Homebrew
+brew install pkg-config
+brew install opencv
+
+# Verify OpenCV installation
+pkg-config --modversion opencv4
+
+# Compile the C++ program using g++ and OpenCV libraries
+g++ -o travel travel.cpp `pkg-config --cflags --libs opencv4`
+
+# Run the compiled program
+./travel
