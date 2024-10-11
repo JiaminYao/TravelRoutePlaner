@@ -19,7 +19,7 @@ def onclick(event):
 
 if __name__ == "__main__":
     # Path to the image
-    filename = "/Users/yaojiamin/Documents/SIUE/Course/CS456 Algorithms/project/Europe.png"
+    filename = "../Image/Europe.png"
 
     img = cv2.imread(filename)
 
