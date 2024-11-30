@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <string>
 #include <limits>
+#include <numeric>
+#include <functional>
 
 using namespace std;
 
@@ -105,7 +107,8 @@ unordered_map<string, vector<double>> loadFlightData(const string& file, vector<
 tuple<vector<int>, vector<int>> flightGreedyPath(
     const vector<cv::Point>& city_coords,
     const unordered_map<string, vector<double>>& flight_data,
-    const vector<string>& city_names) {
+    const vector<string>& city_names,
+    int start_city) {
 
     int n = city_names.size();
     if (n == 0) return {{}, {}};
@@ -113,9 +116,9 @@ tuple<vector<int>, vector<int>> flightGreedyPath(
     vector<int> min_cost_path, min_time_path;
     vector<bool> visited_cost(n, false), visited_time(n, false);
 
-    int current_city_cost = 0, current_city_time = 0;
+    int current_city_cost = start_city, current_city_time = start_city;
 
-    // Start paths with the first city
+    // Start paths with the selected city
     min_cost_path.push_back(current_city_cost);
     min_time_path.push_back(current_city_time);
 
@@ -172,6 +175,7 @@ tuple<vector<int>, vector<int>> flightGreedyPath(
     return {min_cost_path, min_time_path};
 }
 
+
 // Function to draw the flight paths using Greedy Algorithm
 void drawFlightGreedyPath(cv::Mat& base_img, const vector<cv::Point>& city_coords, const vector<int>& path, const string& output_file) {
     cv::Mat img = base_img.clone();
@@ -209,13 +213,48 @@ PathInfo divideAndConquerHelper(
         return {{start}, 0.0, 0.0};
     }
 
-    int mid = (start + end) / 2;
+    // Collect city pairs and their metrics
+    vector<pair<int, double>> metrics;
+    for (int i = start; i <= end; ++i) {
+        double metric_value = 0.0;
 
-    // Divide: recursively solve for left and right halves
-    PathInfo left = divideAndConquerHelper(start, mid, flight_data, city_names, cost_metric);
-    PathInfo right = divideAndConquerHelper(mid + 1, end, flight_data, city_names, cost_metric);
+        if (i > start) {
+            string key = city_names[start] + "_" + city_names[i];
+            string reverse_key = city_names[i] + "_" + city_names[start];
 
-    // Merge: find the best bridge between left and right
+            if (flight_data.count(key)) {
+                metric_value = flight_data.at(key)[cost_metric ? 0 : 1];
+            } else if (flight_data.count(reverse_key)) {
+                metric_value = flight_data.at(reverse_key)[cost_metric ? 0 : 1];
+            } else {
+                metric_value = numeric_limits<double>::max();
+            }
+        }
+
+        metrics.push_back({i, metric_value});
+    }
+
+    // Sort by cost or time
+    sort(metrics.begin(), metrics.end(), [](const pair<int, double>& a, const pair<int, double>& b) {
+        return a.second < b.second;
+    });
+
+    // Extract sorted indices
+    vector<int> sorted_indices;
+    for (const auto& metric : metrics) {
+        sorted_indices.push_back(metric.first);
+    }
+
+    // Divide indices into left and right halves
+    int mid = sorted_indices.size() / 2;
+    vector<int> left_indices(sorted_indices.begin(), sorted_indices.begin() + mid);
+    vector<int> right_indices(sorted_indices.begin() + mid, sorted_indices.end());
+
+    // Recursive calls for left and right halves
+    PathInfo left = divideAndConquerHelper(left_indices.front(), left_indices.back(), flight_data, city_names, cost_metric);
+    PathInfo right = divideAndConquerHelper(right_indices.front(), right_indices.back(), flight_data, city_names, cost_metric);
+
+    // Merge left and right paths
     double min_bridge_cost = numeric_limits<double>::max();
     double min_bridge_time = numeric_limits<double>::max();
     int best_left = -1, best_right = -1;
@@ -244,7 +283,6 @@ PathInfo divideAndConquerHelper(
         }
     }
 
-    // Combine the paths and total metrics
     PathInfo result;
     result.path = left.path;
     result.path.insert(result.path.end(), right.path.begin(), right.path.end());
@@ -254,46 +292,76 @@ PathInfo divideAndConquerHelper(
     return result;
 }
 
+
 // Wrapper function for Divide and Conquer
 tuple<vector<int>, vector<int>> flightDCPath(
     const vector<cv::Point>& city_coords,
     const unordered_map<string, vector<double>>& flight_data,
-    const vector<string>& city_names) {
+    const vector<string>& city_names,
+    int start_city) {
 
     int n = city_names.size();
     if (n == 0) return {{}, {}};
 
-    // Find minimum-cost path
-    PathInfo min_cost_path_info = divideAndConquerHelper(0, n - 1, flight_data, city_names, true);
-    vector<int> min_cost_path = min_cost_path_info.path;
+    // Adjust indices for the selected starting city
+    vector<int> indices(n);
+    iota(indices.begin(), indices.end(), 0);
+    rotate(indices.begin(), indices.begin() + start_city, indices.end());
 
-    // Find minimum-time path
-    PathInfo min_time_path_info = divideAndConquerHelper(0, n - 1, flight_data, city_names, false);
-    vector<int> min_time_path = min_time_path_info.path;
-
-    return {min_cost_path, min_time_path};
-}
-
-// Function to calculate the total cost or time for a given path
-double calculateTotalMetric(const vector<int>& path, const unordered_map<string, vector<double>>& flight_data, const vector<string>& city_names, bool cost_metric = true) {
-    double total_metric = 0.0;
-
-    for (size_t i = 0; i < path.size() - 1; ++i) {
-        string key = city_names[path[i]] + "_" + city_names[path[i + 1]];
-        string reverse_key = city_names[path[i + 1]] + "_" + city_names[path[i]];
-
-        int index = cost_metric ? 0 : 1; // 0 for cost, 1 for time
-
-        if (flight_data.find(key) != flight_data.end()) {
-            total_metric += flight_data.at(key)[index];
-        } else if (flight_data.find(reverse_key) != flight_data.end()) {
-            total_metric += flight_data.at(reverse_key)[index];
-        } else {
-            cerr << "Warning: No flight data found for route " << key << " or " << reverse_key << endl;
+    // Recursive Divide and Conquer helper
+    std::function<PathInfo(int, int, bool)> divideAndConquerHelper =
+        [&](int start, int end, bool cost_metric) -> PathInfo {
+        if (start == end) {
+            return {{indices[start]}, 0.0, 0.0};
         }
-    }
 
-    return total_metric;
+        int mid = (start + end) / 2;
+        PathInfo left = divideAndConquerHelper(start, mid, cost_metric);
+        PathInfo right = divideAndConquerHelper(mid + 1, end, cost_metric);
+
+        // Merge left and right paths
+        double min_bridge_cost = numeric_limits<double>::max();
+        double min_bridge_time = numeric_limits<double>::max();
+        int best_left = -1, best_right = -1;
+
+        for (int l : left.path) {
+            for (int r : right.path) {
+                string key = city_names[l] + "_" + city_names[r];
+                string reverse_key = city_names[r] + "_" + city_names[l];
+
+                double bridge_cost = flight_data.count(key) ? flight_data.at(key)[0] :
+                                        (flight_data.count(reverse_key) ? flight_data.at(reverse_key)[0] : numeric_limits<double>::max());
+                double bridge_time = flight_data.count(key) ? flight_data.at(key)[1] :
+                                        (flight_data.count(reverse_key) ? flight_data.at(reverse_key)[1] : numeric_limits<double>::max());
+
+                if (cost_metric && bridge_cost < min_bridge_cost) {
+                    min_bridge_cost = bridge_cost;
+                    min_bridge_time = bridge_time;
+                    best_left = l;
+                    best_right = r;
+                } else if (!cost_metric && bridge_time < min_bridge_time) {
+                    min_bridge_cost = bridge_cost;
+                    min_bridge_time = bridge_time;
+                    best_left = l;
+                    best_right = r;
+                }
+            }
+        }
+
+        PathInfo result;
+        result.path = left.path;
+        result.path.insert(result.path.end(), right.path.begin(), right.path.end());
+        result.total_cost = left.total_cost + right.total_cost + min_bridge_cost;
+        result.total_time = left.total_time + right.total_time + min_bridge_time;
+
+        return result;
+    };
+
+    // Find paths
+    PathInfo min_cost_path_info = divideAndConquerHelper(0, n - 1, true);
+    PathInfo min_time_path_info = divideAndConquerHelper(0, n - 1, false);
+
+    return {min_cost_path_info.path, min_time_path_info.path};
 }
 
 // Function to draw the flight paths using Divide and Conquer Algorithm
@@ -365,7 +433,8 @@ PathInfo dynamicProgrammingHelper(
 tuple<vector<int>, vector<int>> flightDPPath(
     const vector<cv::Point>& city_coords,
     const unordered_map<string, vector<double>>& flight_data,
-    const vector<string>& city_names) {
+    const vector<string>& city_names,
+    int start_city) {
 
     int n = city_names.size();
     if (n == 0) return {{}, {}};
@@ -396,34 +465,61 @@ tuple<vector<int>, vector<int>> flightDPPath(
     vector<vector<double>> dp_time(1 << n, vector<double>(n, -1.0));
     vector<vector<int>> parent_time(1 << n, vector<int>(n, -1));
 
+    // Recursive helper for DP
+    std::function<double(int, int, const vector<vector<double>>&, vector<vector<double>>&, vector<vector<int>>&)> dpHelper =
+        [&](int current_city, int visited_mask, const vector<vector<double>>& metric_matrix,
+            vector<vector<double>>& dp, vector<vector<int>>& parent) -> double {
+        if (visited_mask == (1 << n) - 1) {
+            return metric_matrix[current_city][start_city];
+        }
+
+        if (dp[visited_mask][current_city] != -1.0) {
+            return dp[visited_mask][current_city];
+        }
+
+        double min_metric = numeric_limits<double>::max();
+        int next_city = -1;
+
+        for (int next = 0; next < n; ++next) {
+            if (!(visited_mask & (1 << next))) {  // If the city is not visited
+                double cost = metric_matrix[current_city][next] +
+                                dpHelper(next, visited_mask | (1 << next), metric_matrix, dp, parent);
+
+                if (cost < min_metric) {
+                    min_metric = cost;
+                    next_city = next;
+                }
+            }
+        }
+
+        dp[visited_mask][current_city] = min_metric;
+        parent[visited_mask][current_city] = next_city;
+        return min_metric;
+    };
+
     // Compute minimum-cost path
-    dynamicProgrammingHelper(0, 1, n, cost_matrix, dp_cost, parent_cost);
+    dpHelper(start_city, 1 << start_city, cost_matrix, dp_cost, parent_cost);
 
     // Compute minimum-time path
-    dynamicProgrammingHelper(0, 1, n, time_matrix, dp_time, parent_time);
+    dpHelper(start_city, 1 << start_city, time_matrix, dp_time, parent_time);
 
     // Reconstruct paths
-    vector<int> min_cost_path, min_time_path;
-    int mask = 1, current_city = 0;
+    auto reconstructPath = [&](const vector<vector<int>>& parent) {
+        vector<int> path;
+        int mask = 1 << start_city, current_city = start_city;
 
-    // Reconstruct minimum-cost path
-    while (current_city != -1) {
-        min_cost_path.push_back(current_city);
-        int next_city = parent_cost[mask][current_city];
-        mask |= (1 << next_city);
-        current_city = next_city;
-    }
+        while (current_city != -1) {
+            path.push_back(current_city);
+            int next_city = parent[mask][current_city];
+            mask |= (1 << next_city);
+            current_city = next_city;
+        }
 
-    mask = 1;
-    current_city = 0;
+        return path;
+    };
 
-    // Reconstruct minimum-time path
-    while (current_city != -1) {
-        min_time_path.push_back(current_city);
-        int next_city = parent_time[mask][current_city];
-        mask |= (1 << next_city);
-        current_city = next_city;
-    }
+    vector<int> min_cost_path = reconstructPath(parent_cost);
+    vector<int> min_time_path = reconstructPath(parent_time);
 
     return {min_cost_path, min_time_path};
 }
@@ -453,6 +549,28 @@ void drawFlightDPPath(cv::Mat& base_img, const vector<cv::Point>& city_coords, c
     cv::imwrite(output_file, img);
 }
 
+// Function to calculate the total cost or time for a given path
+double calculateTotalMetric(const vector<int>& path, const unordered_map<string, vector<double>>& flight_data, const vector<string>& city_names, bool cost_metric = true) {
+    double total_metric = 0.0;
+
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        string key = city_names[path[i]] + "_" + city_names[path[i + 1]];
+        string reverse_key = city_names[path[i + 1]] + "_" + city_names[path[i]];
+
+        int index = cost_metric ? 0 : 1; // 0 for cost, 1 for time
+
+        if (flight_data.find(key) != flight_data.end()) {
+            total_metric += flight_data.at(key)[index];
+        } else if (flight_data.find(reverse_key) != flight_data.end()) {
+            total_metric += flight_data.at(reverse_key)[index];
+        } else {
+            cerr << "Warning: No flight data found for route " << key << " or " << reverse_key << endl;
+        }
+    }
+
+    return total_metric;
+}
+
 // Function to write the city order and metrics to a CSV file
 void writeCityOrderToCSV(const string& filename, const vector<int>& path, const vector<string>& city_names, const vector<cv::Point>& city_coords, int total_cost, int total_time) {
     ofstream outfile(filename);
@@ -480,10 +598,25 @@ int main() {
     cv::Mat base_img = cv::imread("./Image/Europe.png");
     if (flight_data.empty()) return -1;
 
+    // Display available cities
+    cout << "Available cities:" << endl;
+    for (size_t i = 0; i < city_names.size(); ++i) {
+        cout << i << ": " << city_names[i] << " (" << city_coords[i].x << ", " << city_coords[i].y << ")" << endl;
+    }
+
+    // Get the starting city from the user
+    int start_city;
+    cout << "Enter the index of the starting city: ";
+    cin >> start_city;
+    if (start_city < 0 || start_city >= city_names.size()) {
+        cerr << "Error: Invalid starting city index." << endl;
+        return -1;
+    }
+
     // Get paths for different scenarios
-    auto [min_cost_path_greedy, min_time_path_greedy] = flightGreedyPath(city_coords, flight_data, city_names);
-    auto [min_cost_path_dc, min_time_path_dc] = flightDCPath(city_coords, flight_data, city_names);
-    auto [min_cost_path_dp, min_time_path_dp] = flightDPPath(city_coords, flight_data, city_names);
+    auto [min_cost_path_greedy, min_time_path_greedy] = flightGreedyPath(city_coords, flight_data, city_names, start_city);
+    auto [min_cost_path_dc, min_time_path_dc] = flightDCPath(city_coords, flight_data, city_names, start_city);
+    auto [min_cost_path_dp, min_time_path_dp] = flightDPPath(city_coords, flight_data, city_names, start_city);
 
     // Calculate metrics for Greedy paths
     double total_cost_greedy_cost_path = calculateTotalMetric(min_cost_path_greedy, flight_data, city_names, true);

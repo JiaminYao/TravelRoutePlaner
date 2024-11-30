@@ -118,8 +118,7 @@ void drawInitialPath(cv::Mat& img, const vector<cv::Point>& city_list)
 
 
 // Function to implement Greedy algorithm to find the shortest path
-vector<int> shortestGreedyPath(const vector<cv::Point>& city_list)
-{
+vector<int> shortestGreedyPath(const vector<cv::Point>& city_list) {
     int n = city_list.size();
     vector<bool> visited(n, false);  // Track visited cities
     vector<int> shortest_greedy_index;  // Store the path of city indices
@@ -127,26 +126,21 @@ vector<int> shortestGreedyPath(const vector<cv::Point>& city_list)
     shortest_greedy_index.push_back(current_city);
     visited[current_city] = true;
 
-    for (int i = 1; i < n; i++)
-    {
+    for (int i = 1; i < n; i++) {
         double min_distance = numeric_limits<double>::max();
         int next_city = -1;
 
-        for (int j = 0; j < n; j++)
-        {
-            if (!visited[j])
-            {
+        for (int j = 0; j < n; j++) {
+            if (!visited[j]) {
                 double dist = calculateDistance(city_list[current_city], city_list[j]);
-                if (dist < min_distance)
-                {
+                if (dist < min_distance) {
                     min_distance = dist;
                     next_city = j;
                 }
             }
         }
 
-        if (next_city != -1)
-        {
+        if (next_city != -1) {
             shortest_greedy_index.push_back(next_city);
             visited[next_city] = true;
             current_city = next_city;
@@ -185,84 +179,79 @@ void drawShortestGreedyPath(cv::Mat& img, const vector<cv::Point>& city_coords, 
 
 
 // Function to implement the Divide-and-Conquer algorithm to find the shortest pairs
-pair<int, int> divideAndConquer(vector<City>& cities, int left, int right, double& min_dist)
-{
-    // Base case: If there are 3 or fewer cities, use brute-force
-    if (right - left <= 1)
-    {
-        double dist = calculateDistance(cities[left].point, cities[right].point);
-        min_dist = dist;
-        return { cities[left].index, cities[right].index };
+void divideAndConquerHelper(const vector<City>& cities, vector<int>& path) {
+    if (cities.empty()) return;
+
+    if (cities.size() == 1) {
+        // Add the single city's index to the path
+        path.push_back(cities[0].index);
+        return;
     }
 
-    // Find the middle point
-    int mid = left + (right - left) / 2;
-    cv::Point mid_point = cities[mid].point;
+    size_t mid = cities.size() / 2;
 
-    // Recursively find the closest pair on both halves
-    double left_dist = numeric_limits<double>::max(), right_dist = numeric_limits<double>::max();
-    pair<int, int> left_pair = divideAndConquer(cities, left, mid, left_dist);
-    pair<int, int> right_pair = divideAndConquer(cities, mid + 1, right, right_dist);
+    // Divide the cities into two halves
+    vector<City> left_cities(cities.begin(), cities.begin() + mid);
+    vector<City> right_cities(cities.begin() + mid, cities.end());
 
-    // Determine the smallest distance from the left and right halves
-    min_dist = min(left_dist, right_dist);
-    pair<int, int> best_pair = (min_dist == left_dist) ? left_pair : right_pair;
-
-    return best_pair;
+    // Process left and right halves
+    divideAndConquerHelper(left_cities, path);
+    divideAndConquerHelper(right_cities, path);
 }
 
-// Function to implement the Divide-and-Conquer algorithm to find the shortest path
-vector<int> shortestDCPath(const vector<cv::Point>& city_list)
-{
-    // Convert cv::Point to City struct for DC algorithm
-    vector<City> city_list_dc;
-    for (size_t i = 0; i < city_list.size(); i++)
-    {
-        city_list_dc.push_back({city_list[i], static_cast<int>(i)});
+
+// Main function for Divide-and-Conquer
+vector<int> shortestDCPath(const vector<City>& city_list, int start_city_index) {
+
+    // Validate the start city index
+    if (start_city_index < 0 || start_city_index >= city_list.size()) {
+        cerr << "Error: Invalid start city index!" << endl;
+        return {};
     }
 
-    // Start with the first city in the input list
-    vector<int> dc_path;
-    dc_path.push_back(0); // Start with the first city
+    // Identify the starting city
+    City start_city = city_list[start_city_index];
 
-    // Sort cities by x-coordinates for the divide and conquer approach
-    sort(city_list_dc.begin(), city_list_dc.end(), [](const City& a, const City& b) { return a.point.x < b.point.x; });
-
-    // Find the closest pair using divide-and-conquer
-    double min_dist = numeric_limits<double>::max();
-    pair<int, int> closest_pair = divideAndConquer(city_list_dc, 0, city_list_dc.size() - 1, min_dist);
-
-    // Add the closest pair carefully to avoid duplication
-    unordered_set<int> added_cities = {0};  // Start by marking the first city as added
-
-    // Add cities from the closest pair only if they aren't already in the path
-    if (added_cities.find(closest_pair.first) == added_cities.end())
-    {
-        dc_path.push_back(closest_pair.first);
-        added_cities.insert(closest_pair.first);
-    }
-
-    if (added_cities.find(closest_pair.second) == added_cities.end())
-    {
-        dc_path.push_back(closest_pair.second);
-        added_cities.insert(closest_pair.second);
-    }
-
-    // Now, sort the remaining cities by y-coordinate and add them, skipping already added cities
-    sort(city_list_dc.begin(), city_list_dc.end(), [](const City& a, const City& b) { return a.point.y < b.point.y; });
-
-    for (const auto& city : city_list_dc)
-    {
-        if (added_cities.find(city.index) == added_cities.end())  // Add only if not already added
-        {
-            dc_path.push_back(city.index);
-            added_cities.insert(city.index);
+    // Create a new list excluding the starting city
+    vector<City> remaining_cities;
+    for (int i = 0; i < city_list.size(); ++i) {
+        if (i != start_city_index) {
+            remaining_cities.push_back(city_list[i]);
         }
     }
 
-    return dc_path;
-}
+    // Sort the remaining cities by y-coordinate
+    sort(remaining_cities.begin(), remaining_cities.end(), [](const City& a, const City& b) {
+        return a.point.y < b.point.y;
+    });
 
+    // Recursive Divide-and-Conquer
+    function<void(const vector<City>&, vector<int>&)> divideAndConquerHelper = [&](const vector<City>& cities, vector<int>& path) {
+        if (cities.size() <= 1) {
+            if (!cities.empty()) {
+                path.push_back(cities[0].index); // Add the single city to the path
+            }
+            return;
+        }
+
+        size_t mid = cities.size() / 2;
+
+        // Divide the cities into two halves
+        vector<City> left_cities(cities.begin(), cities.begin() + mid);
+        vector<City> right_cities(cities.begin() + mid, cities.end());
+
+        // Recur on both halves
+        divideAndConquerHelper(left_cities, path);
+        divideAndConquerHelper(right_cities, path);
+    };
+
+    // Start processing
+    vector<int> path;
+    path.push_back(start_city.index); // Add the starting city first
+    divideAndConquerHelper(remaining_cities, path);
+
+    return path;
+}
 
 // Function to draw the Shortest Path using Divide-and-Conquer Algorithm
 void drawShortestDCPath(cv::Mat& img, const vector<cv::Point>& city_list, const vector<int>& dc_path)
@@ -292,86 +281,61 @@ void drawShortestDCPath(cv::Mat& img, const vector<cv::Point>& city_list, const 
 }
 
 // Function to implement the Dynamic Programming algorithm to find the shortest path
-vector<int> shortestDPPath(const vector<cv::Point>& city_list)
-{
+vector<int> shortestDPPath(const vector<cv::Point>& city_list) {
     int n = city_list.size();
     vector<vector<double>> dist(n, vector<double>(n, 0));
 
-    // Fill the distance matrix
-    for (int i = 0; i < n; i++)
-    {
-        for (int j = 0; j < n; j++)
-        {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
             dist[i][j] = calculateDistance(city_list[i], city_list[j]);
         }
     }
 
-    // DP table where dp[mask][i] is the minimum distance to visit all cities in 'mask' and end at city i
     vector<vector<double>> dp(1 << n, vector<double>(n, INF));
-    vector<vector<int>> parent(1 << n, vector<int>(n, -1)); // To reconstruct the path
-
-    // Start from city 0
+    vector<vector<int>> parent(1 << n, vector<int>(n, -1));
     dp[1][0] = 0;
 
-    // Iterate over all subsets of cities
-    for (int mask = 1; mask < (1 << n); mask++)
-    {
-        for (int u = 0; u < n; u++)
-        {
-            if (!(mask & (1 << u))) continue; // Skip if u is not in mask
-
-            // Try to go to the next city v
-            for (int v = 0; v < n; v++)
-            {
-                if (mask & (1 << v)) continue; // Skip if v is already visited
-
+    for (int mask = 1; mask < (1 << n); mask++) {
+        for (int u = 0; u < n; u++) {
+            if (!(mask & (1 << u))) continue;
+            for (int v = 0; v < n; v++) {
+                if (mask & (1 << v)) continue;
                 int next_mask = mask | (1 << v);
                 double new_dist = dp[mask][u] + dist[u][v];
-
-                if (new_dist < dp[next_mask][v])
-                {
+                if (new_dist < dp[next_mask][v]) {
                     dp[next_mask][v] = new_dist;
-                    parent[next_mask][v] = u; // Record the path
+                    parent[next_mask][v] = u;
                 }
             }
         }
     }
 
-    // Reconstruct the path (find minimum distance to return to city 0)
+    vector<int> path;
     double min_cost = INF;
     int last_city = -1;
     int final_mask = (1 << n) - 1;
 
-    for (int i = 1; i < n; i++)
-    {
-        double final_cost = dp[final_mask][i] + dist[i][0];
-        if (final_cost < min_cost)
-        {
-            min_cost = final_cost;
+    for (int i = 1; i < n; i++) {
+        double cost = dp[final_mask][i] + dist[i][0];
+        if (cost < min_cost) {
+            min_cost = cost;
             last_city = i;
         }
     }
 
-    // Reconstruct the shortest path
-    vector<int> path;
     int current_city = last_city;
     int current_mask = final_mask;
 
-    while (current_city != -1)
-    {
+    while (current_city != -1) {
         path.push_back(current_city);
         int temp = parent[current_mask][current_city];
         current_mask ^= (1 << current_city);
         current_city = temp;
     }
 
-    // No need to add the starting city again, as it's already included in the path
-
-    reverse(path.begin(), path.end()); // Reverse to get the correct order
-
+    reverse(path.begin(), path.end());
     return path;
 }
-
 
 // Function to draw the Shortest Path using Dynamic Programming Algorithm
 void drawShortestDPPath(cv::Mat& img, const vector<cv::Point>& city_list, const vector<int>& dp_path)
@@ -428,6 +392,7 @@ int main()
         cerr << "Error: City coordinates file is empty or not loaded." << endl;
         return -1;
     }
+
     // Load the image (replace with your image path)
     string image_file = "./Image/Europe.png";
     cv::Mat img_initial = cv::imread(image_file);  // For initial path
@@ -441,40 +406,82 @@ int main()
         return -1;
     }
 
+    // Display available cities
+    cout << "Available cities:" << endl;
+    for (size_t i = 0; i < city_coords.size(); ++i) {
+        cout << i << ": " << city_coords[i].name << " (" << city_coords[i].point.x << ", " << city_coords[i].point.y << ")" << endl;
+    }
+
+    int start_city_index;
+    cout << "Enter the index of the starting city: ";
+    cin >> start_city_index;
+
+    if (start_city_index < 0 || start_city_index >= city_coords.size()) {
+        cerr << "Error: Invalid city index." << endl;
+        return -1;
+    }
+
+    // 1. **Initial Path** (Just reorder to show the starting city first)
     vector<cv::Point> city_coordinates;
     for (const auto& city : city_coords) {
         city_coordinates.push_back(city.point);
     }
-
-    // 1. Initial path
+    vector<int> initial_path;
+    initial_path.push_back(start_city_index);
+    for (size_t i = 0; i < city_coords.size(); ++i) {
+        if (static_cast<int>(i) != start_city_index) {
+            initial_path.push_back(i);
+        }
+    }
     drawInitialPath(img_initial, city_coordinates);
 
-    // 2. Apply the greedy algorithm to find the shortest path
-    vector<int> shortest_greedy_index = shortestGreedyPath(city_coordinates);
-    drawShortestGreedyPath(img_greedy, city_coordinates, shortest_greedy_index);
-    double greedy_total_distance = calculateTotalDistance(city_coordinates, shortest_greedy_index);
-    cout << "Total distance (Greedy): " << greedy_total_distance << " units" << " = " << greedy_total_distance*0.9 << " km" << endl;
+    // 2. **Greedy Algorithm**
+    vector<cv::Point> greedy_input;
+    for (int index : initial_path) {
+        greedy_input.push_back(city_coordinates[index]);
+    }
+    vector<int> greedy_path = shortestGreedyPath(greedy_input);
+    vector<int> mapped_greedy_path;
+    for (int idx : greedy_path) {
+        mapped_greedy_path.push_back(initial_path[idx]);
+    }
+    drawShortestGreedyPath(img_greedy, city_coordinates, mapped_greedy_path);
+    double greedy_total_distance = calculateTotalDistance(city_coordinates, mapped_greedy_path);
+    cout << "Total distance (Greedy): " << greedy_total_distance << " units = "
+         << greedy_total_distance * 0.9 << " km" << endl;
 
-    // 3. Apply the divide-and-conquer algorithm to find the shortest path
-    vector<int> shortest_dc_index = shortestDCPath(city_coordinates);
-    drawShortestDCPath(img_dc, city_coordinates, shortest_dc_index);
-    double dc_total_distance = calculateTotalDistance(city_coordinates, shortest_dc_index);
-    cout << "Total distance (Divide-and-Conquer): " << dc_total_distance << " units" << " = " << dc_total_distance*0.9 << " km" << endl;
+    // 3. **Divide-and-Conquer Algorithm**
+    vector<int> dc_path = shortestDCPath(city_coords, start_city_index);
+    drawShortestDCPath(img_dc, city_coordinates, dc_path);
+    double dc_total_distance = calculateTotalDistance(city_coordinates, dc_path);
+    cout << "Total distance (Divide-and-Conquer): " << dc_total_distance << " units = "
+         << dc_total_distance * 0.9 << " km" << endl;
 
-    // 4. Apply the dynamic programming algorithm to find the shortest path
-    vector<int> shortest_dp_index = shortestDPPath(city_coordinates);
-    drawShortestDPPath(img_dp, city_coordinates, shortest_dp_index);
-    double dp_total_distance = calculateTotalDistance(city_coordinates, shortest_dp_index);
-    cout << "Total distance (Dynamic Programming): " << dp_total_distance << " units" << " = " << dp_total_distance*0.9 << " km" << endl;
+    // 4. **Dynamic Programming Algorithm** (Fix for start city)
+    vector<cv::Point> dp_input;
+    for (int index : initial_path) {
+        dp_input.push_back(city_coordinates[index]);
+    }
+    vector<int> dp_path = shortestDPPath(dp_input);
+    vector<int> mapped_dp_path;
+    for (int idx : dp_path) {
+        mapped_dp_path.push_back(initial_path[idx]);
+    }
+    drawShortestDPPath(img_dp, city_coordinates, mapped_dp_path);
+    double dp_total_distance = calculateTotalDistance(city_coordinates, mapped_dp_path);
+    cout << "Total distance (Dynamic Programming): " << dp_total_distance << " units = "
+         << dp_total_distance * 0.9 << " km" << endl;
 
+    // Save images for paths
     cv::imwrite("./Image/Initial_Path.png", img_initial);
     cv::imwrite("./Image/E1Helicopter_Greedy_Path.png", img_greedy);
     cv::imwrite("./Image/E1Helicopter_DC_Path.png", img_dc);
     cv::imwrite("./Image/E1Helicopter_DP_Path.png", img_dp);
 
-    writeCityOrderToCSV("./Table/E1Helicopter_Greedy_Order.csv", city_coords, shortest_greedy_index);
-    writeCityOrderToCSV("./Table/E1Helicopter_DC_Order.csv", city_coords, shortest_dc_index);
-    writeCityOrderToCSV("./Table/E1Helicopter_DP_Order.csv", city_coords, shortest_dp_index);
+    // Save paths to CSV
+    writeCityOrderToCSV("./Table/E1Helicopter_Greedy_Order.csv", city_coords, mapped_greedy_path);
+    writeCityOrderToCSV("./Table/E1Helicopter_DC_Order.csv", city_coords, dc_path);
+    writeCityOrderToCSV("./Table/E1Helicopter_DP_Order.csv", city_coords, mapped_dp_path);
     
     // Open the saved images using the system's default image viewer
 #ifdef _WIN32

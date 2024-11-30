@@ -131,8 +131,9 @@ double getTravelMetric(const unordered_map<string, vector<double>>& travel_data,
 std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath(
     const vector<cv::Point>& city_list,
     const unordered_map<string, vector<double>>& travel_data,
-    const vector<string>& city_names) {
-    
+    const vector<string>& city_names,
+    int start_city) {
+
     int n = city_list.size();
     if (n == 0) return {{}, {}, {}, {}};
 
@@ -141,8 +142,8 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath
     vector<bool> visited_regular_cost(n, false), visited_regular_time(n, false);
     vector<bool> visited_highway_cost(n, false), visited_highway_time(n, false);
 
-    int current_city_regular_cost = 0, current_city_regular_time = 0;
-    int current_city_highway_cost = 0, current_city_highway_time = 0;
+    int current_city_regular_cost = start_city, current_city_regular_time = start_city;
+    int current_city_highway_cost = start_city, current_city_highway_time = start_city;
 
     // Start paths with the initial city and mark it as visited
     regular_cost_path.push_back(current_city_regular_cost);
@@ -168,12 +169,7 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath
         // Loop through each city to determine the next city for each path type
         for (int j = 0; j < n; j++) {
             if (!visited_regular_cost[j]) {
-                string key = city_names[current_city_regular_cost] + "_" + city_names[j];
-                string reverse_key = city_names[j] + "_" + city_names[current_city_regular_cost];
-                
-                double reg_cost = travel_data.count(key) ? travel_data.at(key)[0] :
-                                (travel_data.count(reverse_key) ? travel_data.at(reverse_key)[0] : numeric_limits<double>::max());
-
+                double reg_cost = getTravelMetric(travel_data, city_names, current_city_regular_cost, j, false, true);
                 if (reg_cost < min_reg_cost) {
                     min_reg_cost = reg_cost;
                     next_city_reg_cost = j;
@@ -181,12 +177,7 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath
             }
 
             if (!visited_regular_time[j]) {
-                string key = city_names[current_city_regular_time] + "_" + city_names[j];
-                string reverse_key = city_names[j] + "_" + city_names[current_city_regular_time];
-                
-                double reg_time = travel_data.count(key) ? travel_data.at(key)[1] :
-                                (travel_data.count(reverse_key) ? travel_data.at(reverse_key)[1] : numeric_limits<double>::max());
-
+                double reg_time = getTravelMetric(travel_data, city_names, current_city_regular_time, j, false, false);
                 if (reg_time < min_reg_time) {
                     min_reg_time = reg_time;
                     next_city_reg_time = j;
@@ -194,12 +185,7 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath
             }
 
             if (!visited_highway_cost[j]) {
-                string key = city_names[current_city_highway_cost] + "_" + city_names[j];
-                string reverse_key = city_names[j] + "_" + city_names[current_city_highway_cost];
-                
-                double hw_cost = travel_data.count(key) ? travel_data.at(key)[2] :
-                                (travel_data.count(reverse_key) ? travel_data.at(reverse_key)[2] : numeric_limits<double>::max());
-
+                double hw_cost = getTravelMetric(travel_data, city_names, current_city_highway_cost, j, true, true);
                 if (hw_cost < min_highway_cost) {
                     min_highway_cost = hw_cost;
                     next_city_highway_cost = j;
@@ -207,12 +193,7 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingGreedyPath
             }
 
             if (!visited_highway_time[j]) {
-                string key = city_names[current_city_highway_time] + "_" + city_names[j];
-                string reverse_key = city_names[j] + "_" + city_names[current_city_highway_time];
-                
-                double hw_time = travel_data.count(key) ? travel_data.at(key)[3] :
-                                (travel_data.count(reverse_key) ? travel_data.at(reverse_key)[3] : numeric_limits<double>::max());
-
+                double hw_time = getTravelMetric(travel_data, city_names, current_city_highway_time, j, true, false);
                 if (hw_time < min_highway_time) {
                     min_highway_time = hw_time;
                     next_city_highway_time = j;
@@ -268,45 +249,77 @@ void drawDrivingGreedyPath(cv::Mat& base_img, const vector<cv::Point>& city_coor
 
 
 // Recursive function to find the optimal path by Divide-and-Conquer without skipping cities
-PathInfo divideAndConquerPath(int start, int end, const unordered_map<string, vector<double>>& travel_data, const vector<string>& city_names, bool highway, bool cost_metric, vector<bool>& visited) {
-    // Base case: single city
+PathInfo divideAndConquerPath(int start, int end, const unordered_map<string, vector<double>>& travel_data, const vector<string>& city_names, bool highway, bool cost_metric, unordered_set<int>& visited) {
+    // Base case
+    if (start > end) return {{}, 0, 0};
     if (start == end) {
-        visited[start] = true;  // Mark as visited
+        visited.insert(start);
         return {{start}, 0, 0};
     }
 
-    int mid = start + (end - start) / 2;
-    
-    // Divide: Recursive calls for left and right halves, ensuring cities are marked as visited
-    PathInfo left_path = divideAndConquerPath(start, mid, travel_data, city_names, highway, cost_metric, visited);
-    PathInfo right_path = divideAndConquerPath(mid + 1, end, travel_data, city_names, highway, cost_metric, visited);
+    // Collect all cities in the range and their metrics
+    vector<pair<int, double>> cities;
+    for (int i = start; i <= end; ++i) {
+        double metric_value = getTravelMetric(travel_data, city_names, start, i, highway, cost_metric);
+        cities.emplace_back(i, metric_value);
+    }
 
-    // Calculate cost and time to connect left half to right half
+    // Sort cities by the selected metric (cost or time)
+    sort(cities.begin(), cities.end(), [cost_metric](const pair<int, double>& a, const pair<int, double>& b) {
+        return a.second < b.second;
+    });
+
+    // Extract sorted city indices
+    vector<int> sorted_indices;
+    for (const auto& city : cities) {
+        sorted_indices.push_back(city.first);
+    }
+
+    // Divide
+    int mid = sorted_indices.size() / 2;
+    PathInfo left_path = divideAndConquerPath(sorted_indices.front(), sorted_indices[mid - 1], travel_data, city_names, highway, cost_metric, visited);
+    PathInfo right_path = divideAndConquerPath(sorted_indices[mid], sorted_indices.back(), travel_data, city_names, highway, cost_metric, visited);
+
+    // Calculate the cost/time to connect the last city in the left path to the first city in the right path
     double min_bridge_cost = numeric_limits<double>::max();
     double min_bridge_time = numeric_limits<double>::max();
     int best_left = -1, best_right = -1;
 
-    // Find optimal "bridge" between the last city in left and the first city in right
-    for (int i = 0; i < left_path.path.size(); i++) {
-        for (int j = 0; j < right_path.path.size(); j++) {
-            double bridge_cost = getTravelMetric(travel_data, city_names, left_path.path[i], right_path.path[j], highway, true);
-            double bridge_time = getTravelMetric(travel_data, city_names, left_path.path[i], right_path.path[j], highway, false);
-            
+    for (int left_city : left_path.path) {
+        for (int right_city : right_path.path) {
+            if (visited.find(right_city) != visited.end()) continue;
+
+            double bridge_cost = getTravelMetric(travel_data, city_names, left_city, right_city, highway, true);
+            double bridge_time = getTravelMetric(travel_data, city_names, left_city, right_city, highway, false);
+
             if ((cost_metric && bridge_cost < min_bridge_cost) || (!cost_metric && bridge_time < min_bridge_time)) {
                 min_bridge_cost = bridge_cost;
                 min_bridge_time = bridge_time;
-                best_left = i;
-                best_right = j;
+                best_left = left_city;
+                best_right = right_city;
             }
         }
     }
 
-    // Merge: Combine paths from left and right halves with the optimal bridge
+    // Merge paths with the optimal bridge
     PathInfo result;
-    result.path.insert(result.path.end(), left_path.path.begin(), left_path.path.end());
+    result.path = left_path.path;
+    if (best_right != -1 && visited.find(best_right) == visited.end()) {
+        result.path.push_back(best_right);  // Add the bridge city
+        visited.insert(best_right);        // Mark as visited
+    }
     result.path.insert(result.path.end(), right_path.path.begin(), right_path.path.end());
+
     result.cost = left_path.cost + right_path.cost + min_bridge_cost;
     result.time = left_path.time + right_path.time + min_bridge_time;
+
+    // Ensure all cities in the range are visited
+    for (int i = start; i <= end; ++i) {
+        if (visited.find(i) == visited.end()) {
+            result.path.push_back(i);
+            visited.insert(i);
+        }
+    }
 
     return result;
 }
@@ -315,26 +328,35 @@ PathInfo divideAndConquerPath(int start, int end, const unordered_map<string, ve
 std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingDCPath(
     const vector<cv::Point>& city_list,
     const unordered_map<string, vector<double>>& travel_data,
-    const vector<string>& city_names) {
-    
+    const vector<string>& city_names,
+    int start_city) {
+
     int n = city_list.size();
     if (n == 0) return {{}, {}, {}, {}};
 
-    // Track visited cities to ensure all are included
-    vector<bool> visited(n, false);
+    unordered_set<int> visited;
 
-    // Calculate paths for each metric
     PathInfo reg_cost_path = divideAndConquerPath(0, n - 1, travel_data, city_names, false, true, visited);
+    visited.clear();
     PathInfo reg_time_path = divideAndConquerPath(0, n - 1, travel_data, city_names, false, false, visited);
+    visited.clear();
     PathInfo hw_cost_path = divideAndConquerPath(0, n - 1, travel_data, city_names, true, true, visited);
+    visited.clear();
     PathInfo hw_time_path = divideAndConquerPath(0, n - 1, travel_data, city_names, true, false, visited);
 
-    // Ensure each path visits all cities by checking the size
-    if (reg_cost_path.path.size() != n || reg_time_path.path.size() != n || hw_cost_path.path.size() != n || hw_time_path.path.size() != n) {
-        cerr << "Error: DC algorithm did not visit all cities in one or more paths." << endl;
-    }
+    // Ensure the start city is at the beginning of each path
+    auto adjustPathStart = [&](vector<int>& path) {
+        auto it = find(path.begin(), path.end(), start_city);
+        if (it != path.end()) {
+            rotate(path.begin(), it, path.end());
+        }
+    };
 
-    // Return only the paths
+    adjustPathStart(reg_cost_path.path);
+    adjustPathStart(reg_time_path.path);
+    adjustPathStart(hw_cost_path.path);
+    adjustPathStart(hw_time_path.path);
+
     return {reg_cost_path.path, reg_time_path.path, hw_cost_path.path, hw_time_path.path};
 }
 
@@ -443,11 +465,78 @@ PathInfo dynamicProgrammingTSP(const vector<vector<double>>& travel_metric) {
     return {path, total_cost, 0.0};
 }
 
+PathInfo dynamicProgrammingTSPWithStart(const vector<vector<double>>& travel_metric, int start_city) {
+    int n = travel_metric.size();
+    if (n == 0) return {{}, 0.0, 0.0};
+
+    // DP table to store the minimum cost of visiting cities with a specific bitmask
+    vector<vector<double>> dp_cost(1 << n, vector<double>(n, -1.0));
+    vector<vector<int>> parent_cost(1 << n, vector<int>(n, -1));
+
+    // Recursive helper function
+    function<double(int, int)> dpHelper = [&](int current_city, int visited_mask) {
+        if (visited_mask == (1 << n) - 1) {
+            // Base case: all cities visited, return to the starting city
+            return travel_metric[current_city][start_city];
+        }
+
+        if (dp_cost[visited_mask][current_city] != -1.0) {
+            // Return memoized result if available
+            return dp_cost[visited_mask][current_city];
+        }
+
+        double min_cost = numeric_limits<double>::max();
+        int next_city = -1;
+
+        // Explore all unvisited cities
+        for (int next = 0; next < n; ++next) {
+            if (!(visited_mask & (1 << next))) { // If the city is not visited
+                double cost = travel_metric[current_city][next] + dpHelper(next, visited_mask | (1 << next));
+                if (cost < min_cost) {
+                    min_cost = cost;
+                    next_city = next;
+                }
+            }
+        }
+
+        dp_cost[visited_mask][current_city] = min_cost;
+        parent_cost[visited_mask][current_city] = next_city;
+        return min_cost;
+    };
+
+    // Start the DP recursion from the specified starting city with only it visited
+    dpHelper(start_city, 1 << start_city);
+
+    // Reconstruct the path
+    vector<int> path;
+    int mask = 1 << start_city, current_city = start_city;
+
+    while (current_city != -1) {
+        path.push_back(current_city);
+        int next_city = parent_cost[mask][current_city];
+        mask |= (1 << next_city);
+        current_city = next_city;
+    }
+
+    // Add the starting city at the end to complete the cycle
+    path.push_back(start_city);
+
+    // Compute total cost of the path
+    double total_cost = 0.0;
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        total_cost += travel_metric[path[i]][path[i + 1]];
+    }
+
+    return {path, total_cost, 0.0};
+}
+
+
 // Wrapper function for DP paths
 std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingDPPath(
     const vector<cv::Point>& city_list,
     const unordered_map<string, vector<double>>& travel_data,
-    const vector<string>& city_names) {
+    const vector<string>& city_names,
+    int start_city) {
 
     int n = city_list.size();
     if (n == 0) return {{}, {}, {}, {}};
@@ -458,14 +547,15 @@ std::tuple<vector<int>, vector<int>, vector<int>, vector<int>> drivingDPPath(
     vector<vector<double>> hw_cost_metric = precomputeTravelMetrics(travel_data, city_names, true, true);
     vector<vector<double>> hw_time_metric = precomputeTravelMetrics(travel_data, city_names, true, false);
 
-    // Calculate DP paths
-    PathInfo reg_cost_path = dynamicProgrammingTSP(reg_cost_metric);
-    PathInfo reg_time_path = dynamicProgrammingTSP(reg_time_metric);
-    PathInfo hw_cost_path = dynamicProgrammingTSP(hw_cost_metric);
-    PathInfo hw_time_path = dynamicProgrammingTSP(hw_time_metric);
+    // Calculate DP paths starting from the selected city
+    PathInfo reg_cost_path = dynamicProgrammingTSPWithStart(reg_cost_metric, start_city);
+    PathInfo reg_time_path = dynamicProgrammingTSPWithStart(reg_time_metric, start_city);
+    PathInfo hw_cost_path = dynamicProgrammingTSPWithStart(hw_cost_metric, start_city);
+    PathInfo hw_time_path = dynamicProgrammingTSPWithStart(hw_time_metric, start_city);
 
     return {reg_cost_path.path, reg_time_path.path, hw_cost_path.path, hw_time_path.path};
 }
+
 
 void drawDrivingDPPath(cv::Mat& base_img, const vector<cv::Point>& city_coords, const vector<int>& path, const string& output_file) {
     cv::Mat img = base_img.clone();
@@ -539,7 +629,6 @@ void writeCityOrderToCSV(const string& filename, const vector<int>& path, const 
     }
 }
 
-// Main function with updated calls
 int main() {
     vector<string> city_names;
     vector<cv::Point> city_coords = loadCityCoordinates("./Dataset/Dataset_Coordinate.csv", city_names);
@@ -550,10 +639,26 @@ int main() {
     cv::Mat base_img = cv::imread("./Image/Europe.png");
     if (base_img.empty()) return -1;
 
-    // Get paths for different scenarios
-    auto [reg_cost_path_greedy, reg_time_path_greedy, hw_cost_path_greedy, hw_time_path_greedy] = drivingGreedyPath(city_coords, travel_data, city_names);
-    auto [reg_cost_path_dc, reg_time_path_dc, hw_cost_path_dc, hw_time_path_dc] = drivingDCPath(city_coords, travel_data, city_names);
-    auto [reg_cost_path_dp, reg_time_path_dp, hw_cost_path_dp, hw_time_path_dp] = drivingDPPath(city_coords, travel_data, city_names);
+    cout << "Available cities:" << endl;
+    for (size_t i = 0; i < city_names.size(); ++i) {
+        cout << i << ": " << city_names[i] << " (" << city_coords[i].x << ", " << city_coords[i].y << ")" << endl;
+    }
+
+    int start_city_index;
+    cout << "Enter the index of the starting city: ";
+    cin >> start_city_index;
+
+    // Greedy paths
+    auto [reg_cost_path_greedy, reg_time_path_greedy, hw_cost_path_greedy, hw_time_path_greedy] =
+        drivingGreedyPath(city_coords, travel_data, city_names, start_city_index);
+
+    // Divide-and-Conquer paths
+    auto [reg_cost_path_dc, reg_time_path_dc, hw_cost_path_dc, hw_time_path_dc] =
+        drivingDCPath(city_coords, travel_data, city_names, start_city_index);
+
+    // Dynamic Programming paths
+    auto [reg_cost_path_dp, reg_time_path_dp, hw_cost_path_dp, hw_time_path_dp] =
+        drivingDPPath(city_coords, travel_data, city_names, start_city_index);
 
     // Define path information for each type
     struct PathInfo {
