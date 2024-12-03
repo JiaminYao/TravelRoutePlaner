@@ -1,0 +1,59 @@
+Map Coordinate Annotation Tool
+This tool allows you to display an image, annotate points by clicking on it, and save the annotated image with the corresponding points. 
+It supports both Python and C++ implementations. Python is recommended for ease of use, while C++ provides a performance-oriented alternative.
+
+## Features
+- Display an image.
+- Mouse interaction for annotating points on the image.
+
+## Requirements
+For Python:
+- Python 3.6 or later.
+- OpenCV (installed via Conda or pip).
+- Matplotlib.
+For C++:
+- C++ Com- piler: g++ with support for C++11 or later.
+- OpenCV Library: Installed via Conda or a compatible package manager.
+
+## Installation
+1. Install OpenCV (Both Python and C++)
+Run the following command in your Conda environment:
+```conda install -c conda-forge opencv```
+
+2. Additional Dependencies for Python
+Install Matplotlib for Python:
+```pip install matplotlib```
+
+## Usage
+Python Version
+Run the Python program:
+```python mapCoordinate.py```
+
+C++ Version
+1. Compile the program using the following command (replace xxx with the actual paths to your OpenCV installation):
+```g++ -std=c++11 -o mapCoordinate mapCoordinate.cpp -I/xxx/include/opencv4 -L/xxx/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs```
+Example (if using Conda on macOS):
+```g++ -std=c++11 -o mapCoordinate mapCoordinate.cpp -I/Users/yaojiamin/miniconda3/include/opencv4 -L/Users/yaojiamin/miniconda3/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs```
+
+2. Set the DYLD_LIBRARY_PATH environment variable to include the OpenCV libraries (replace xxx with the actual path):
+```export DYLD_LIBRARY_PATH=xxx/lib:$DYLD_LIBRARY_PATH```
+Example (if using Conda on macOS):
+```export DYLD_LIBRARY_PATH=/Users/yaojiamin/miniconda3/lib:$DYLD_LIBRARY_PATH```
+
+3. Run the compiled program:
+```./mapCoordinate```
+
+
+## C++ Troubleshooting
+Missing Include or Library Files:
+Ensure the include files are present:
+```ls /Users/your_username/miniconda3/include/opencv4```
+Ensure the library files are present:
+```ls /Users/your_username/miniconda3/lib | grep opencv```
+
+"Library not loaded" Error:
+Ensure DYLD_LIBRARY_PATH is set correctly:
+```export DYLD_LIBRARY_PATH=/Users/your_username/miniconda3/lib:$DYLD_LIBRARY_PATH```
+
+Compiler Errors:
+Ensure you are using a compiler that supports C++11 or later.
